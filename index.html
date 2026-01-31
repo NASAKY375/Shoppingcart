@@ -426,29 +426,43 @@ let currentIndex = 0;
 // ============================================================
 //  Firebase listeners
 // ============================================================
-// Listen to stores
-db.ref('stores').on('value', snap => {
-  stores = [];
-  snap.forEach(child => {
-    stores.push({ id: child.key, name: child.val().name });
-  });
-  stores.sort((a, b) => a.name.localeCompare(b.name));
+let storesLoaded = false;
+let itemsLoaded  = false;
+
+function tryRender() {
+  if (!storesLoaded || !itemsLoaded) return;
+  if (currentIndex >= stores.length) currentIndex = Math.max(0, stores.length - 1);
   renderTabs();
   renderPages();
   updateHints();
-  if (currentIndex >= stores.length) currentIndex = Math.max(0, stores.length - 1);
   applySwipe();
+}
+
+// Listen to stores
+db.ref('stores').on('value', snap => {
+  stores = [];
+  if (snap.exists()) {
+    snap.forEach(child => {
+      stores.push({ id: child.key, name: child.val().name });
+    });
+  }
+  stores.sort((a, b) => a.name.localeCompare(b.name));
+  storesLoaded = true;
+  tryRender();
 });
 
 // Listen to all items
 db.ref('items').on('value', snap => {
   items = {};
-  snap.forEach(child => {
-    const d = child.val();
-    if (!items[d.storeId]) items[d.storeId] = [];
-    items[d.storeId].push({ id: child.key, text: d.text, done: d.done || false });
-  });
-  renderPages();
+  if (snap.exists()) {
+    snap.forEach(child => {
+      const d = child.val();
+      if (!items[d.storeId]) items[d.storeId] = [];
+      items[d.storeId].push({ id: child.key, text: d.text, done: d.done || false });
+    });
+  }
+  itemsLoaded = true;
+  tryRender();
 });
 
 // ============================================================
@@ -479,7 +493,10 @@ function renderPages() {
     page.className = 'store-page';
     page.id = 'page-' + store.id;
 
-    const storeItems = items[store.id] || [];
+    const storeItems = (items[store.id] || []).sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      return a.text.localeCompare(b.text, undefined, { sensitivity: 'base' });
+    });
 
     let listHtml = '';
     storeItems.forEach(item => {
@@ -503,7 +520,7 @@ function renderPages() {
         <button class="btn-add-item" onclick="addItem('${store.id}', this.previousElementSibling)">+</button>
       </div>
       <div class="item-list" id="list-${store.id}">
-        ${listHtml.length ? listHtml : `<div class="empty-state"><div class="icon">📝</div><p>No items yet.<br>Add something above!</p></div>`}
+        ${storeItems.length ? listHtml : `<div class="empty-state"><div class="icon">📝</div><p>No items yet.<br>Add something above!</p></div>`}
       </div>`;
 
     track.appendChild(page);
