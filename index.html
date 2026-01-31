@@ -7,7 +7,7 @@
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-database-compat.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -414,7 +414,7 @@ const firebaseConfig = {
   appId:             "1:49776823346:web:91e1c40e78c98ede2b402b"
 };
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const db = firebase.database();
 
 // ============================================================
 //  State
@@ -426,10 +426,13 @@ let currentIndex = 0;
 // ============================================================
 //  Firebase listeners
 // ============================================================
-// Listen to stores collection
-db.collection('stores').orderBy('name').onSnapshot(snap => {
+// Listen to stores
+db.ref('stores').on('value', snap => {
   stores = [];
-  snap.forEach(doc => stores.push({ id: doc.id, ...doc.data() }));
+  snap.forEach(child => {
+    stores.push({ id: child.key, name: child.val().name });
+  });
+  stores.sort((a, b) => a.name.localeCompare(b.name));
   renderTabs();
   renderPages();
   updateHints();
@@ -437,13 +440,13 @@ db.collection('stores').orderBy('name').onSnapshot(snap => {
   applySwipe();
 });
 
-// Listen to ALL items (one listener, grouped client-side)
-db.collection('items').onSnapshot(snap => {
+// Listen to all items
+db.ref('items').on('value', snap => {
   items = {};
-  snap.forEach(doc => {
-    const d = doc.data();
+  snap.forEach(child => {
+    const d = child.val();
     if (!items[d.storeId]) items[d.storeId] = [];
-    items[d.storeId].push({ id: doc.id, text: d.text, done: d.done || false });
+    items[d.storeId].push({ id: child.key, text: d.text, done: d.done || false });
   });
   renderPages();
 });
@@ -570,19 +573,18 @@ document.getElementById('swipeViewport').addEventListener('mouseleave', () => { 
 function addItem(storeId, input) {
   const text = input.value.trim();
   if (!text) return;
-  db.collection('items').add({ storeId, text, done: false });
+  db.ref('items').push({ storeId, text, done: false });
   input.value = '';
 }
 
 function toggleItem(storeId, itemId, done) {
-  db.collection('items').doc(itemId).update({ done });
+  db.ref('items/' + itemId).update({ done });
 }
 
 function removeItem(storeId, itemId) {
-  // animate out then delete
   const el = document.getElementById('item-' + itemId);
   if (el) el.classList.add('removing');
-  setTimeout(() => db.collection('items').doc(itemId).delete(), 220);
+  setTimeout(() => db.ref('items/' + itemId).remove(), 220);
 }
 
 // ============================================================
@@ -590,13 +592,15 @@ function removeItem(storeId, itemId) {
 // ============================================================
 function deleteStore(storeId) {
   if (!confirm('Delete this store and all its items?')) return;
-  // delete all items for this store first
-  db.collection('items').where('storeId','==',storeId).get().then(snap => {
-    const batch = db.batch();
-    snap.forEach(doc => batch.delete(doc.ref));
-    batch.commit();
+  // delete all items for this store
+  db.ref('items').once('value', snap => {
+    const updates = {};
+    snap.forEach(child => {
+      if (child.val().storeId === storeId) updates['items/' + child.key] = null;
+    });
+    updates['stores/' + storeId] = null;
+    db.ref().update(updates);
   });
-  db.collection('stores').doc(storeId).delete();
 }
 
 // ─── Modal helpers ───
@@ -611,7 +615,7 @@ function closeModal() {
 function confirmAddStore() {
   const name = document.getElementById('modalInput').value.trim();
   if (!name) return;
-  db.collection('stores').add({ name });
+  db.ref('stores').push({ name });
   closeModal();
 }
 // close modal on backdrop click
