@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Shoppingcart</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ─── Reset & Variables ─── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:        #f4f1ec;
+      --card:      #ffffff;
+      --text:      #2c2c2c;
+      --text-dim:  #8a8580;
+      --accent:    #d64f2e;
+      --accent-light: #f0e8e5;
+      --green:     #3a9d6e;
+      --green-light: #e6f7ee;
+      --border:    #e8e3dc;
+      --shadow:    0 2px 16px rgba(0,0,0,.07);
+      --radius:    14px;
+      --header-h: 64px;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;        /* the viewport itself won't scroll */
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── Header ─── */
+    header {
+      position: fixed; top: 0; left: 0; right: 0;
+      height: var(--header-h);
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px;
+      z-index: 100;
+      box-shadow: 0 1px 8px rgba(0,0,0,.06);
+    }
+    .header-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.3rem;
+      color: var(--text);
+      letter-spacing: -.5px;
+    }
+    .header-title span { color: var(--accent); }
+    .btn-add-store {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      font-size: 1.4rem;
+      line-height: 1;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .btn-add-store:hover { transform: scale(1.08); box-shadow: 0 3px 10px rgba(214,79,46,.3); }
+
+    /* ─── Store tabs / pill nav ─── */
+    .tabs-wrapper {
+      position: fixed;
+      top: var(--header-h);
+      left: 0; right: 0;
+      height: 52px;
+      background: var(--bg);
+      display: flex; align-items: center;
+      padding: 0 16px;
+      gap: 8px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      z-index: 90;
+      scrollbar-width: none;
+    }
+    .tabs-wrapper::-webkit-scrollbar { display: none; }
+
+    .tab {
+      flex-shrink: 0;
+      scroll-snap-align: start;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      color: var(--text-dim);
+      padding: 6px 16px;
+      border-radius: 30px;
+      font-size: .82rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .tab:hover { border-color: var(--accent); color: var(--accent); }
+    .tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(214,79,46,.25);
+    }
+
+    /* ─── Swipeable viewport ─── */
+    .swipe-viewport {
+      position: fixed;
+      top: calc(var(--header-h) + 52px);
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+    }
+    .swipe-track {
+      display: flex;
+      height: 100%;
+      transition: transform .35s cubic-bezier(.4,0,.2,1);
+      will-change: transform;
+    }
+    .store-page {
+      flex-shrink: 0;
+      width: 100vw;
+      height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 20px 16px 100px;
+      scroll-snap-type: y mandatory;
+    }
+
+    /* ─── Store page header ─── */
+    .store-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .store-name {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+    }
+    .btn-delete-store {
+      background: none; border: none;
+      color: var(--text-dim);
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: color .15s, background .15s;
+    }
+    .btn-delete-store:hover { color: var(--accent); background: var(--accent-light); }
+
+    /* ─── Item input row ─── */
+    .input-row {
+      display: flex; gap: 8px;
+      margin-bottom: 18px;
+    }
+    .input-row input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: .88rem;
+      background: var(--card);
+      color: var(--text);
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .input-row input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(214,79,46,.12);
+    }
+    .input-row input::placeholder { color: var(--text-dim); }
+    .btn-add-item {
+      background: var(--green);
+      color: #fff;
+      border: none;
+      width: 42px;
+      border-radius: var(--radius);
+      font-size: 1.3rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform .15s, box-shadow .15s;
+      flex-shrink: 0;
+    }
+    .btn-add-item:hover { transform: scale(1.06); box-shadow: 0 3px 10px rgba(58,157,110,.3); }
+
+    /* ─── Item list ─── */
+    .item-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .item-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 11px 14px;
+      display: flex; align-items: center; gap: 12px;
+      box-shadow: var(--shadow);
+      animation: slideIn .25s cubic-bezier(.4,0,.2,1);
+      transition: opacity .2s, transform .2s;
+    }
+    .item-card.removing {
+      opacity: 0;
+      transform: translateX(40px) scale(.96);
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* checkbox */
+    .item-check {
+      width: 22px; height: 22px;
+      border: 2px solid var(--border);
+      border-radius: 7px;
+      flex-shrink: 0;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s;
+      background: #fff;
+    }
+    .item-check:hover { border-color: var(--green); }
+    .item-check.checked {
+      background: var(--green);
+      border-color: var(--green);
+    }
+    .item-check.checked::after {
+      content: '✓';
+      color: #fff;
+      font-size: .85rem;
+      font-weight: 600;
+    }
+
+    .item-text {
+      flex: 1;
+      font-size: .9rem;
+      color: var(--text);
+      transition: color .2s, text-decoration .2s;
+    }
+    .item-card.done .item-text {
+      color: var(--text-dim);
+      text-decoration: line-through;
+    }
+
+    .btn-remove-item {
+      background: none; border: none;
+      color: var(--border);
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 5px;
+      transition: color .15s;
+      line-height: 1;
+    }
+    .btn-remove-item:hover { color: var(--accent); }
+
+    /* ─── Empty state ─── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-dim);
+    }
+    .empty-state .icon { font-size: 2.4rem; margin-bottom: 10px; }
+    .empty-state p { font-size: .88rem; }
+
+    /* ─── Modal (add store) ─── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.35);
+      z-index: 200;
+      display: flex; align-items: flex-end; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity .25s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal {
+      background: var(--card);
+      width: 100%; max-width: 420px;
+      border-radius: 20px 20px 0 0;
+      padding: 24px 20px 40px;
+      transform: translateY(100%);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+    }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.2rem;
+      margin-bottom: 14px;
+    }
+    .modal input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: .9rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .modal input:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .modal-actions button {
+      flex: 1; padding: 10px; border: none;
+      border-radius: var(--radius);
+      font-family: inherit; font-size: .85rem;
+      font-weight: 500; cursor: pointer;
+      transition: opacity .15s;
+    }
+    .modal-actions button:hover { opacity: .8; }
+    .btn-modal-cancel { background: var(--border); color: var(--text); }
+    .btn-modal-confirm { background: var(--accent); color: #fff; }
+
+    /* ─── Swipe hint arrows (desktop) ─── */
+    .swipe-hint {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 80;
+      background: rgba(255,255,255,.7);
+      border: none;
+      width: 32px; height: 48px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      color: var(--text-dim);
+      transition: background .2s, color .2s;
+      backdrop-filter: blur(4px);
+    }
+    .swipe-hint:hover { background: rgba(255,255,255,.95); color: var(--accent); }
+    .swipe-hint.left  { left: 4px; }
+    .swipe-hint.right { right: 4px; }
+    .swipe-hint.hidden { display: none; }
+
+    /* ─── No stores state ─── */
+    .no-stores {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      color: var(--text-dim);
+      text-align: center;
+      padding: 20px;
+    }
+    .no-stores .icon { font-size: 3rem; margin-bottom: 12px; }
+    .no-stores p { font-size: .9rem; max-width: 260px; line-height: 1.5; }
+
+    /* scrollbar styling for item lists */
+    .store-page::-webkit-scrollbar { width: 4px; }
+    .store-page::-webkit-scrollbar-track { background: transparent; }
+    .store-page::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="header-title">🛒 <span>Shopping</span>cart</div>
+  <button class="btn-add-store" onclick="openModal()">+</button>
+</header>
+
+<!-- Pill tabs -->
+<div class="tabs-wrapper" id="tabs"></div>
+
+<!-- Arrow hints -->
+<button class="swipe-hint left hidden" id="hintLeft" onclick="swipeTo(currentIndex - 1)">◀</button>
+<button class="swipe-hint right hidden" id="hintRight" onclick="swipeTo(currentIndex + 1)">▶</button>
+
+<!-- Swipeable area -->
+<div class="swipe-viewport" id="swipeViewport">
+  <div class="swipe-track" id="swipeTrack"></div>
+</div>
+
+<!-- No stores placeholder -->
+<div class="no-stores" id="noStores">
+  <div class="icon">🛍️</div>
+  <p>No stores yet.<br>Press <strong>+</strong> to add your first store!</p>
+</div>
+
+<!-- Add-store modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>Add a new store</h3>
+    <input type="text" id="modalInput" placeholder="e.g. IKEA, Albert Heijn …" autocomplete="off"
+           onkeydown="if(event.key==='Enter') confirmAddStore()" />
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-modal-confirm" onclick="confirmAddStore()">Add store</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  🔥  FIREBASE CONFIG  — replace with your own values!
+// ============================================================
+const firebaseConfig = {
+  apiKey:            "AIzaSyBYsN9OHWPjzmoPb7ZB7OH-exstO2j5EVE",
+  authDomain:        "shopping-spree-73628.firebaseapp.com",
+  databaseURL:       "https://shopping-spree-73628-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId:         "shopping-spree-73628",
+  storageBucket:     "shopping-spree-73628.firebasestorage.app",
+  messagingSenderId: "49776823346",
+  appId:             "1:49776823346:web:91e1c40e78c98ede2b402b"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ============================================================
+//  State
+// ============================================================
+let stores       = [];   // { id, name }
+let items        = {};   // { storeId: [ {id, text, done}, … ] }
+let currentIndex = 0;
+
+// ============================================================
+//  Firebase listeners
+// ============================================================
+// Listen to stores collection
+db.collection('stores').orderBy('name').onSnapshot(snap => {
+  stores = [];
+  snap.forEach(doc => stores.push({ id: doc.id, ...doc.data() }));
+  renderTabs();
+  renderPages();
+  updateHints();
+  if (currentIndex >= stores.length) currentIndex = Math.max(0, stores.length - 1);
+  applySwipe();
+});
+
+// Listen to ALL items (one listener, grouped client-side)
+db.collection('items').onSnapshot(snap => {
+  items = {};
+  snap.forEach(doc => {
+    const d = doc.data();
+    if (!items[d.storeId]) items[d.storeId] = [];
+    items[d.storeId].push({ id: doc.id, text: d.text, done: d.done || false });
+  });
+  renderPages();
+});
+
+// ============================================================
+//  Render Tabs
+// ============================================================
+function renderTabs() {
+  const el = document.getElementById('tabs');
+  el.innerHTML = '';
+  stores.forEach((s, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (i === currentIndex ? ' active' : '');
+    tab.textContent = s.name;
+    tab.onclick = () => swipeTo(i);
+    el.appendChild(tab);
+  });
+  toggleNoStores();
+}
+
+// ============================================================
+//  Render Store Pages
+// ============================================================
+function renderPages() {
+  const track = document.getElementById('swipeTrack');
+  track.innerHTML = '';
+
+  stores.forEach((store) => {
+    const page = document.createElement('div');
+    page.className = 'store-page';
+    page.id = 'page-' + store.id;
+
+    const storeItems = items[store.id] || [];
+
+    let listHtml = '';
+    storeItems.forEach(item => {
+      listHtml += `
+        <div class="item-card ${item.done ? 'done' : ''}" id="item-${item.id}">
+          <div class="item-check ${item.done ? 'checked' : ''}" onclick="toggleItem('${store.id}','${item.id}',${!item.done})"></div>
+          <span class="item-text">${escapeHtml(item.text)}</span>
+          <button class="btn-remove-item" onclick="removeItem('${store.id}','${item.id}')">✕</button>
+        </div>`;
+    });
+
+    page.innerHTML = `
+      <div class="store-header">
+        <div class="store-name">${escapeHtml(store.name)}</div>
+        <button class="btn-delete-store" onclick="deleteStore('${store.id}')">🗑</button>
+      </div>
+      <div class="input-row">
+        <input type="text" class="item-input" data-store="${store.id}"
+               placeholder="Add an item…" autocomplete="off"
+               onkeydown="if(event.key==='Enter') addItem('${store.id}', this)" />
+        <button class="btn-add-item" onclick="addItem('${store.id}', this.previousElementSibling)">+</button>
+      </div>
+      <div class="item-list" id="list-${store.id}">
+        ${listHtml.length ? listHtml : `<div class="empty-state"><div class="icon">📝</div><p>No items yet.<br>Add something above!</p></div>`}
+      </div>`;
+
+    track.appendChild(page);
+  });
+
+  applySwipe();
+}
+
+// ============================================================
+//  Swipe / navigation
+// ============================================================
+function swipeTo(i) {
+  if (i < 0 || i >= stores.length) return;
+  currentIndex = i;
+  applySwipe();
+  renderTabs(); // update active tab
+  updateHints();
+}
+
+function applySwipe() {
+  const track = document.getElementById('swipeTrack');
+  track.style.transform = `translateX(-${currentIndex * 100}vw)`;
+}
+
+function updateHints() {
+  document.getElementById('hintLeft').classList.toggle('hidden',  currentIndex <= 0);
+  document.getElementById('hintRight').classList.toggle('hidden', currentIndex >= stores.length - 1);
+}
+
+// ============================================================
+//  Touch / drag swipe support
+// ============================================================
+let touchStartX = 0, touchStartY = 0, dragging = false;
+
+document.getElementById('swipeViewport').addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  dragging = true;
+}, { passive: true });
+
+document.getElementById('swipeViewport').addEventListener('touchend', e => {
+  if (!dragging) return;
+  dragging = false;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+    dx < 0 ? swipeTo(currentIndex + 1) : swipeTo(currentIndex - 1);
+  }
+}, { passive: true });
+
+// Mouse drag (desktop)
+let mouseDown = false, mouseStartX = 0;
+document.getElementById('swipeViewport').addEventListener('mousedown', e => {
+  mouseDown = true; mouseStartX = e.clientX;
+});
+document.getElementById('swipeViewport').addEventListener('mouseup', e => {
+  if (!mouseDown) return;
+  mouseDown = false;
+  const dx = e.clientX - mouseStartX;
+  if (Math.abs(dx) > 50) dx < 0 ? swipeTo(currentIndex + 1) : swipeTo(currentIndex - 1);
+});
+document.getElementById('swipeViewport').addEventListener('mouseleave', () => { mouseDown = false; });
+
+// ============================================================
+//  CRUD – Items
+// ============================================================
+function addItem(storeId, input) {
+  const text = input.value.trim();
+  if (!text) return;
+  db.collection('items').add({ storeId, text, done: false });
+  input.value = '';
+}
+
+function toggleItem(storeId, itemId, done) {
+  db.collection('items').doc(itemId).update({ done });
+}
+
+function removeItem(storeId, itemId) {
+  // animate out then delete
+  const el = document.getElementById('item-' + itemId);
+  if (el) el.classList.add('removing');
+  setTimeout(() => db.collection('items').doc(itemId).delete(), 220);
+}
+
+// ============================================================
+//  CRUD – Stores
+// ============================================================
+function deleteStore(storeId) {
+  if (!confirm('Delete this store and all its items?')) return;
+  // delete all items for this store first
+  db.collection('items').where('storeId','==',storeId).get().then(snap => {
+    const batch = db.batch();
+    snap.forEach(doc => batch.delete(doc.ref));
+    batch.commit();
+  });
+  db.collection('stores').doc(storeId).delete();
+}
+
+// ─── Modal helpers ───
+function openModal() {
+  document.getElementById('modalOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('modalInput').focus(), 300);
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('modalInput').value = '';
+}
+function confirmAddStore() {
+  const name = document.getElementById('modalInput').value.trim();
+  if (!name) return;
+  db.collection('stores').add({ name });
+  closeModal();
+}
+// close modal on backdrop click
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+// ============================================================
+//  Helpers
+// ============================================================
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toggleNoStores() {
+  document.getElementById('noStores').style.display = stores.length ? 'none' : 'flex';
+  document.getElementById('swipeViewport').style.display = stores.length ? 'block' : 'none';
+  document.querySelectorAll('.swipe-hint').forEach(h => {
+    if (!stores.length) h.classList.add('hidden');
+  });
+}
+</script>
+</body>
+</html>
